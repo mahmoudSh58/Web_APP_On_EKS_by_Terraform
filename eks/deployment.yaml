@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-s3
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: nginx-s3
+
+  template:
+    metadata:
+      labels:
+        app: nginx-s3
+    spec:
+      serviceAccountName: s3-reader-sa
+      volumes:
+        - name: html-volume
+          emptyDir: {}
+
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html
+
+        - name: s3-updater
+          image: public.ecr.aws/aws-cli/aws-cli:2.34.63
+          env:
+            - name: AWS_REGION
+              value: us-east-1
+              
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              while true; do
+              cat <<EOF > /html/index.html
+              <html>
+              <head><title>S3 Buckets</title></head>
+              <body>
+              <h1>S3 Buckets List</h1>
+              <ul>
+              EOF
+
+              aws s3 ls | awk '{print "<li>" $3 "</li>"}' >> /html/index.html
+
+              cat <<EOF >> /html/index.html
+              </ul>
+              <p>Last Updated: $(date)</p>
+              </body>
+              </html>
+              EOF
+              sleep 300
+              done
+              
+          volumeMounts:
+            - name: html-volume
+              mountPath: /html
